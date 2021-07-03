@@ -1,5 +1,8 @@
 package com.jayram.rest.advance;
 
+import java.util.Calendar;
+import java.util.Date;
+
 import javax.inject.Singleton;
 import javax.ws.rs.GET;
 import javax.ws.rs.Path;
@@ -16,6 +19,13 @@ public class MyResorce {
 	@Produces(MediaType.TEXT_PLAIN)
 	public String testMethod(){
 		return "It works!";
+	}
+	
+	@GET
+	@Path("/date")
+	@Produces(MediaType.TEXT_PLAIN)
+	public Date getDate(){
+		return Calendar.getInstance().getTime();
 	}
 	
 	@GET
