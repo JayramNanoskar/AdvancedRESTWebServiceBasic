@@ -22,6 +22,13 @@ public class MyResorce {
 	}
 	
 	@GET
+	@Path("/briefdate")
+	@Produces("text/shortdate")
+	public Date briefDate(){
+		return Calendar.getInstance().getTime();
+	}
+	
+	@GET
 	@Path("/date")
 	@Produces(MediaType.TEXT_PLAIN)
 	public Date getDate(){
