@@ -1,0 +1,520 @@
+--------------------------------------------REST Web Services - Advance JAX-RS ---------------------------------------------
+**Setup:
+-Consider, we have Eclipse as an IDE & Tomcat as a web server.
+-On installation, we can check if tomcat server is running at localhost:8080
+-On successful installation, We get tomcat running welcome page at localhost:8080 but if we gets 404 then we need to change tomcat configuration on double clicking on tomcat server and set server location to use Tomcat installation to get welcome page.
+
+
+**Setting up pom.xml:
+-We can configure and bootstrap our JAX-RS app using maven archetype as jersey-quickstart-webapp which uses servlet which comes with Jersey & handle requests and then can host these app on tomcat server.
+-When we are using web.xml then we have to use servlet container like tomcat etc. But, JAX-RS has an alternative way of bootstrapping our app which has nothing to do with web.xml and servlet.
+-So Jersey comes with Application class, using it we can bootstrap our JAX-RS app. Need to choose maven archetype as maven-archetype-webapp, it is standard starting point while building web app using maven.
+-Add dependencies to pom.xml like jaxrs-ri for JAX-RS jersey framework jars and jersey-media-moxy to convert java instances to json instances, simillary JAXB which is inbult in java used for xml conversion.
+-Add build section to pom to define proper java version in used by mentioning plugin maven-compiler-plugin with configurable java version.
+
+
+**Setting up a JAX RS application:
+-We need to create one class which extends Application class from javax.ws.rs.core.Application and annotate that class with @ApplicationPath("/") annotation to map it to root URL. By doing all these jersey knows that this is JAX-RS app. So then MyApp class look for all resources to map url further.
+-For example...Inside project named-> advanced-jaxrs
+//MyApp.java
+				@ApplicationPath("webapi")
+				public class MyApp extends Application{
+
+				}
+//MyResource.java
+				@Path("test")
+				public class MyResource{
+					@GET
+					@Produces(MediaType.TEXT_PLAIN)
+					public String testMethod(){
+						return "Hello !!!!!";
+					}
+				}
+-Then by accessing -> localhost:8080/advanced-jaxrs/webapi/test   gets -> Hello !!!!!.
+-Hence, we have fully working JAX-RS application without any xml configuration.
+
+
+
+**The Application class:
+-It is an abstract class, defines the components of JAX-RS application and supplies additional metadata.
+-Our concreate class can override methods like getClasses(), getProperties(), getSingletons().
+
+
+**Resource Life Cycle:
+-Every request has new instance of resource and once request get serve instance get destroyed, this is default behaviour in JAX-RS.
+-Resource in JAX-RS are set to be REQUEST scope. Scope of resource instance is about the request.
+-We can change this default behaviour to singletone, where resource will get create only once and then JAX-RS holds onto that instance no matter how many times we make a request. That instance gets destroyed when we end/stop the server.
+-To make resource singletone, we can use @Singleton annotation on class level.
+-Hence, Resource Life Cycle has two approaches, Default lifecycle approach and Singleton lifecycle approach.
+
+
+
+**Param Annotations and member variables:
+-We know different param annotations like @PathParam, @HeaderParam, @CoockieParam, @QueryParam, @MetrixParam etc. which let us get information about request into our resource.
+-So these annotations can be applied to member variables as well like we used to apply on method arguments.
+-Having param annotations on member variables useful when many methods wants them so all the methods can access them instead of declaring in all methods again.
+-For example..
+//MyResource.java
+				@Path("{myPathParam}/test")
+				public class MyResource{
+
+					@PathParam("myPathParam") private String pathParamExample;
+					@QueryParam("query") private String queryParamExample;
+					
+					@GET
+					@Produces(MediaType.TEXT_PLAIN)
+					public String testMethod(){
+						return "Hello! Path param used "+ pathParamExample + " and Query param used "+queryParamExample;
+					}
+				}
+-Then by accessing -> localhost:8080/advanced-jaxrs/webapi/value/test?query=queryValue   gets ->
+Hello! Path param used value and Query param used queryValue.
+-If we make our resource class singletone then above program won't work because of usage of Param Annotations on member variables.
+-Singleton resources are instantiated during application startup. So, we cannot inject request specific information to their member variables otherwise gets ModelValidationException during application initialization.
+-Hence when resource is singletone we cannot use param annotations on member variables but we can use on method arguments only.
+
+
+
+**ParamConverters:
+-Jersey comes with set of ParamConverters that know how to convert from String to right datatype. This works fine for native datatypes but if we have our custom datatype then jersey won't be able to convert them. Hence we can create our own ParamConverter that handles that conversion.
+-For example.. creating custom type MyDate
+//MyDate.java[pojo class]
+													public class MyDate{
+														private int date;
+														private int month;
+														private int year;
+														//setter & getters
+													}
+//DateResource.java[resource class]
+										@Path("date/{dateString}")
+										public class DateResource{
+
+											@GET
+											@Produces(MediaType.TEXT_PLAIN)
+											public String getRequestedDate(@PathParam("dateString") MyDate myDate){
+												return "Got "+ myDate.toString();
+											}
+										}
+-Then by accessing -> localhost:8080/advanced-jaxrs/webapi/date/today   gets -> 
+ModelValidationException upfront/during application initialization because jersey doesnot find any ParamConverter for custom type MyDate.
+-Hence we need custom ParamConverter which can handle that conversion.
+
+
+**ParamConverterProvider & ParamConverter:
+1)Whenever we need to convert any of these parameter from String to a custom datatype, we need to custom ParamConverter which implement ParamConverter. ParamConverter is an interface which has method to convert from String to custom datatype.
+2)We need to create custom ParamConverter Provider which implements ParamConverterProvider interface requires a type and return ParamConverter accordingly.
+-When application startup, there may be bunch of ParamConverterProviders that are registered with jersey. Whenever jersey finds a type that it doesnot know how to convert, it ask each of those ParamConverterProviders for suitable ParamConverter for desired type if it doesnot find then gets ModelValidationException upfront. 
+
+
+
+**MessageBodyReaders and MessageBodyWriters:
+-MessageBodyReaders and MessageBodyWriters are those who converts raw contents which is sent over the request body to a java types and from java types to response body.
+-MessageBodyReaders and MessageBodyWriters are important while doing marshalling and unmarshalling of types in java.
+-ParamConverter are related to parameters of request/response and MessageBodyReaders/MessageBodyWriters are related to content of request/response.
+
+
+**Implementing a MessageBodyWriter:
+-For example..
+//MyResource.java[resource class]
+										@Path("test")
+										public class MyResource{
+											@GET
+											@Produces(MediaType.TEXT_PLAIN)
+											public Date testMethod(){
+												return Calender.getInstance().getTime();
+											}
+										}
+-Then by accessing -> localhost:8080/advanced-jaxrs/webapi/test   gets ->
+500-Internal server error - MessageBodyWriter not found for media type=text/plain, type=java.util.Date
+-Here, we are asking JAX-RS/Jersey to convert Date to plain text but jersey doesnot know how to do it. So, we can write our custom MessageBodyWriter which lets us take instance of Date and let us convert it to text and return it back.
+-While writing custom MessageBodyWriter, need to implement interface MessageBodyWriter with required generic types.
+-For example..
+//DateMessageBodyWriter.java
+			@Provider
+			@Produces(MediaType.TEXT_PLAIN)
+			public class DateMessageBodyWriter implements MessageBodyWriter<Date>{
+				//methods like  - getSize(){;;};(deprecated now)
+								- isWriteable(){;;};     
+								- writeTo(){;;};
+			}
+-When JAX-RS or jersey detects that it needs to convert some return type like here-Date to TEXT_PLAIN, then it looks at all the providers which happens to be MessageBodyWriters and it ask them all if for given an instance of type can they write to the outputstream/ can they return this into HTTP response otherwise gets 500-Internal server error as MessageBodyWriter not found.
+-Implementing MessageBodyReader is very much simillar to MessageBodyWriter.
+
+
+
+**Custom Media Types:
+-Not only we can implement MessageBodyReader, MessageBodyWriter for common media type but also we can implement our own custom media type and can implement MessageBodyReader & MessageBodyWriter.
+-All common media type are just constant Strings. So any arbitrary String can be media type.
+-For example..
+//MyResource.java[resource class]
+										@Path("test")
+										public class MyResource{
+											@GET
+											@Produces(value = {MediaType.TEXT_PLAIN, "text/shortdate"})
+											public Date testMethod(){
+												return Calender.getInstance().getTime();
+											}
+										}
+//ShortDateMessageBodyWriter.java
+			@Provider
+			@Produces("text/shortdate")
+			public class ShortDateMessageBodyWriter implements MessageBodyWriter<Date>{
+				//methods like getSize(){;;};    isWriteable(){;;};     writeTo(){;;};
+			}
+//DateMessageBodyWriter.java
+			@Provider
+			@Produces(MediaType.TEXT_PLAIN)
+			public class DateMessageBodyWriter implements MessageBodyWriter<Date>{
+				//methods like getSize(){;;};    isWriteable(){;;};     writeTo(){;;};
+			}
+-Client can pick what media type they want in accept header, then JAX-RS/jersey looks at accept header & picks right MessageBodyWriter to convert that and write to the outputstream. So, here if media type in accept header is TEXT_PLAIN then jersey choose DateMessageBodyWriter but if media type in accept header is text/shortdate then jersey choose ShortDateMessageBodyWriter.
+-Custom media types can be useful in versioning, i.e. v1, v2, etc. based on that different method gets execute for different version of our API & Also for other media types which are not available out of box like csv which direct support may be not available in some framework.
+
+
+**JAX RS Client:
+-We use POSTMAN as a client to examine REST api response but even Programmatically we can access the REST api using java that is using JAX RS Client.
+-While writing client we must not be worried about how server is implemented in, means not to worried about any technology, server implementation can be using any language.
+
+
+**Writing a JAX-RS client:
+-We could use low level network APIs that java provides to make an HTTP call, to create client.
+-But JAX-RS & Jersey comes with few APIs that let us build the client & make request to REST API. It is more elegant way to make REST API calls.
+-JAX-RS gives us handy object, Client which is super useful when we make REST API calls, it has all the api for building request & doing all other stuff.
+-For example..
+public class RestApiClient{
+	public static void main(String args[]){
+		Client client = ClientBuilder.newClient();
+		Response response = client.target("http://localhost:8080/advanced-jaxrs/webapi/messages/1")
+									.request()
+									.get(); //Using Fluent API here i.e. chaining of methods one after other till we get object we want.
+		Message message = response.readEntity(Message.class);
+		System.out.println(message.getMessage()); //Hello world! [consider, API response is Hello world!]
+	}
+}
+-request() builds the request.
+-response we get here is wrapper object.
+-We can pass a class, what we are expecting as response to unwrap the response.
+-If anytime we are getting problem while unmarshalling response to particular type then it handy to convert response to String.class. It is good for debugging purpose.
+
+
+
+**Some Best Practices for Writing a JAX-RS client:
+-Avoid using hardcoded urls when possible.
+-Create the generic urls when possible.
+-Manage the target instances properly.
+-For example..
+public class RestApiClient{
+	public static void main(String args[]){
+		Client client = ClientBuilder.newClient();
+		
+		Webtarget baseTarget = client.target("http://localhost:8080/advanced-jaxrs/webapi/");
+		Webtarget messageTarget = baseTarget.path("messages");
+		Webtarget singleMessageTarget = messageTarget.path("{messageId}");
+		
+		Message message1 = singleMessageTarget
+							.resolveTemplate("messageId", "1")
+							.request(MediaType.Application/JSON)
+							.get(Message.class);
+		
+		Message message2 = singleMessageTarget
+							.resolveTemplate("messageId", "2")
+							.request(MediaType.Application/JSON)
+							.get(Message.class);
+
+		System.out.println(message1.getMessage()); //Hello india! [consider, API response is Hello india!]
+		System.out.println(message2.getMessage()); //Hello world! [consider, API response is Hello world!]
+	}
+}
+
+
+
+**Making a POST request:
+-For example..
+//RestApiClient.java
+					public class RestApiClient{
+						public static void main(String args[]){
+							Client client = ClientBuilder.newClient();
+							
+							Webtarget baseTarget = client.target("http://localhost:8080/advanced-jaxrs/webapi/");
+							Webtarget messageTarget = baseTarget.path("messages");
+							Webtarget singleMessageTarget = messageTarget.path("{messageId}");
+							
+							Message newMessage = new Message(4, "My new message", "Jayram");
+							Response postResponse = messageTarget
+												.request()
+												.post(Entity.json(newMessage));
+							
+							if(postResponse.getStatus() != 201){
+								System.out.println("Error");
+							}
+							else if(postResponse.getStatus() == 201){
+								Message createdMessage = postResponse.readEntity(Message.class);
+								System.out.println(createdMessage.getMessage()); //My new message! [Consider API is response is created message resource instance]
+							}
+						}
+					}
+-We can examine status code in response and accordingly can do required exception handling.
+
+
+
+**Creating Invocations:
+-JAX-RS client api has concept of invocation. Invocation object is like Request object but we just short of making the actual request.
+-Idea behind the invocation is, we can prepare the request and put all the thing we need that request to do like target, request formaters, request body, what request method is etc. 
+-Motto is to create the request object which contains all the information about the request, it's ready to go, the only thing is we not made that request yet and some other code can issue that request without knowing what details of request is.
+-So we create an invocation object which contains all the details about request and then we can invoke it somewhere else.
+-Consider, API to get all messages by year: /webapi/messages?year={year}
+-For example..
+//InvocationDemo.java
+					public class InvocationDemo{
+						public static void main(String args[]){
+							InvocationDemo demo = new InvocationDemo();
+							
+							Invocation invocation = demo.prepareRequestForMessageByYear(2021);
+							Response response = invocation.invoke();
+							System.out.println(response.getStatus()); //200
+						}
+						
+						public Invocation prepareRequestForMessageByYear(int year){
+							Client client = ClientBuilder.newClient();
+							return client.target("http://localhost:8080/advanced-jaxrs/webapi/")
+											.path("messages")
+											.queryParam("year", year)
+											.request(MediaType.Application/JSON)
+											.buildGet();
+						}
+					}
+-buildGet() method returns invocation object which is request that is ready to go.
+-Invocation is very handy when we have services or some utility methods which prepare the request and hand them over to actual method which needs to make them.
+
+
+
+**Handling Generic Types:
+-Consider, API response is list of messages.
+-For example...
+//GenericDemo.java
+					public class GenericDemo{
+						public static void main(String args[]){
+							Client client = ClientBuilder.newClient();
+							List<Message> messages = client.target("http://localhost:8080/advanced-jaxrs/webapi/")
+											.path("messages")
+											.queryParam("year", 2021)
+											.request(MediaType.Application/JSON)
+											.get(new GenericType<List<Message>>(){});
+							System.out.println(messages);
+						}
+					}
+
+
+**REST API Authentication:
+-To restrict what thing user can do by keeping credentials and then giving access to certain apis for certain users.
+-The best way to implement Authentication in JAX-RS is using filters.
+
+
+**Implementing Filters:
+-Filter is the way to take some cross-cutting concerns/logic out from our individual resource classes into a common filter class.
+-There are two types of filters in JAX-RS,  Request filter and Response filter.
+-Request filter executes before the request is served and Response filter get executes after response is prepared, it is about to be send to the client. Means they are to intercept request or response.
+-For implementing filter we need to implement respective class as per requirement whether we want to intercept request or response. For request we can use ContainerRequestFilter class & for response we can use ContainerResponseFilter class.
+-Consider, we want to add header named PoweredBy with response. Hence need to intercept response.
+-For example...
+//PoweredByResponseFilter.java
+							@Provider
+							public class PoweredByResponseFilter implements ContainerResponseFilter{
+								@Override
+								public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) throws IOException{
+									responseContext.getHeaders().add("PoweredBy", "John");
+								}
+							}
+-So, by calling any REST api available inside project, we can see added Header in Headers tab in POSTMAN.
+-Another example...
+//LoggingFilter.java
+							@Provider
+							public class LoggingFilter implements ContainerRequestFilter, ContainerResponseFilter{
+							
+								@Override
+								public void filter(ContainerRequestContext requestContext) throws IOException{
+									System.out.println("Request filter");
+									System.out.println(requestContext.getHeaders());
+								}
+								@Override
+								public void filter(ContainerRequestContext requestContext, ContainerResponseContext responseContext) throws IOException{
+									System.out.println("Response filter");
+									System.out.println(responseContext.getHeaders());
+								}
+							}
+-Above we are implementing both the filters simultaneously, JAX-RS knows which method to call when.
+
+
+
+**REST API Authentication Mechanisms:
+-There are different types of authentications 
+1.Classic Session-based Authentication
+2.Basic Access Authentication
+3.Digest Access Authentication
+4.Asymmetric Cryptography
+5.OAuth
+6.JSON Web Token
+
+1)In Classic session-based authentication, when first time client needs to make a call to server, first thing client does is, authenticate by passing username & password telling the identity to server, so once these call is made, server validates username & password, if they are right then server makes record of it against that client and keeps that information in memory i.e. in session object. Session has some kind of id/token, then server in it's response to client sent back that session token. Then client needs to hold on that session token into cookies & next time when client talks to server, client sent that token to server, Hence server recognize the client. When client finally log-off, server destroys the session.
+-REST APIs are suppose to be statless. Server or application running on server doesnot maintain any state/information of request. Hence Classic Session-based Authentication cannot be used with REST APIs.
+
+2)In Basic Access Authentication, when first time client needs to make a call to server, it sends username & password for authentication and on second time also client again sends username & password, so every time authentication happens. There is some specific formate on how to send username & password from header of request.
+For example..Basic Auth - Client side
+			username:password
+					↓
+				Base64 endcoding[dXNlcm5hbWU6cGFzc3dvcmQ==]
+					↓
+			  Authorization:  Basic dXNlcm5hbWU6cGFzc3dvcmQ==
+-Basic Auth - Server side requires exact reverse of Basic Auth - Client side.
+-Encoding is not encryption, it is not secure. Anybody can decode. So always send request over HTTPS, so request is protected, people can not lookup at header & examine the value.
+-Advatages-> It is simple, Stateless server, Supported by all browsers.
+-Disadvatages-> Requires HTTPS, Subject to replay attacks[people can get hold of request if it's not over HTTPS & can sent it as many times on behalf of valid user], Logout is tricky.
+
+3)In Digest Access Authentication, it actually does encryption of secret key that is being sent to the header.
+
+4)In Asymmetric Cryptography, public key cryptography used. Both client & server has public key & private key. They share a public key while they have their own individual private key used to encrypt & decrypt the credentials sent over the request.
+
+5)In OAuth, there are two versions now OAuth1 & OAuth2. OAuth2 is more popular & used.
+
+6)JSON Web Token is one of growing trend.
+-Digest Access Authentication, Asymmetric Cryptography, OAuth & JSON Web Token all provide a way to send credential information without having to maintain state on server which is perfect for REST api.
+
+
+
+**Sending Basic Auth Requests:
+-We can use POSTMAN tool very efficiently to test request based on different Authentication mechanism. 
+-We just need to prepare require request from POSTMAN.
+
+
+**Implementing REST API Authorization-Basic Access Authentication:
+-For implement API which does the Basic Access Authentication, it expects client to send Basic authentication information in header.
+-For example...
+//SecuredResource.java[resource class]
+										@Path("secured")
+										public class SecuredResource{
+											@GET
+											@Path("message")
+											@Produces(MediaType.TEXT_PLAIN)
+											public String securedMethod(){
+												return "This API is secured.";
+											}
+										}
+//SecurityFilter.java
+							@Provider
+							public class SecurityFilter implements ContainerRequestFilter{
+								private static final String AUTHORIZATION_HEADER_KEY = "Authorization";
+								private static final String AUTHORIZATION_HEADER_PREFIX = "Basic";
+								private static final String SECURED_URL_PREFIX = "secured";
+								
+								@Override
+								public void filter(ContainerRequestContext requestContext) throws IOException{
+									if(requestContext.getUriInfo().getPath().contains(SECURED_URL_PREFIX)){
+										List<String> authHeader = responseContext.getHeaders().get(AUTHORIZATION_HEADER);
+										if(authHeader != null && authHeader.size > 0){
+											String authToken = authHeader.get(0);
+											authToken = authToken.replaceFirst(AUTHORIZATION_HEADER_PREFIX, "");
+											String decodedString = new String(Base64.decodeBase64(authToken.getBytes())); //Using Apache Commons Code library
+											StringTokenizer tokenizer = new StringTokenizer(decodedString, ":");
+											String username = tokenizer.nextToken();
+											String password = tokenizer.nextToken();
+											
+											//Consider, Authorized user name is user and password is password for accessing secured resource API
+											if("user".equals(username) && "password".equals(password)){
+												return; //Proceeding this request
+											}
+										}
+										Response unauthorizedStatus = Response.status(Response.Status.UNAUTHORIZED)
+																				.entity("User cannot access the resource.")
+																				.build();
+										requestContext.abortWith(unauthorizedStatus); //Aborting this request.
+									}
+								}
+							}
+-abortWith() of ContainerRequestContext let us to abort the request from our filter when we dont want request going through there.
+-Hence on accessing, http://localhost:8080/advanced-jaxrs/webapi/secured/message 	without any authentication information, we gets 
+User cannot access the resource with 401 status code.
+-But on accessing, http://localhost:8080/advanced-jaxrs/webapi/secured/message 	with Basic authentication information, we gets 
+This API is secured with 200 status code.
+-Implementing other authentication mechanism are pretty much simillar to this, with just change in filter method implementation.
+
+
+
+**Filters and Interceptors:
+-Interceptors model is similar to filters, we can intercept both request and response.
+-Interceptors are designed to manipulate entities like input and output streams i.e. actual body of request & response but filters are to manipulate Header information or metadata information.
+-There are 2 types of intercepters ReaderInterceptor and WriterInterceptor. They are about What being read from and what being written to request/response body.
+-Filters and Interceptors works not only on server but also on client too with JAX-RS.
+
+
+**Filters VS Interceptors at server:
+-Interceptors used to manipulate entities(input & output streams) but Filters used to manipulate request & response params(headers, URIs etc.)
+-Interceptors are of 2 kinds ReaderInterceptor & WriterInterceptor and Filters are of 2 kinds ContainerRequestFilter & ContainerResponseFilter. 
+-Interceptors example is like Encoding an entity response(GZIP etc.) and Filters example is for managing cross-cutting concers which manipulate request/response parameters(Logging, security etc).
+
+
+
+**Client side Entities:
+-Filters - ClientRequestFilter & ClientResponseFilter.
+-Interceptors - ReaderInterceptor & WriterInterceptor.
+-MessageBody - MessageBodyReader & MessageBodyWriter.
+
+
+
+**Flow representation:
+
+		1					2					3								4						5					6
+		ClientRequestFilter	WriterInterceptor	MessageBodyWriter		.		ContainerRequestFilter	ReaderInterceptor	MessageBodyReader
+				↓					↓					↓				.				↓					↓					↓
+JAX-RS 	----------------------------------------------------------------------------------------------------------------------------------------->	JAX-RS
+Client  <-----------------------------------------------------------------------------------------------------------------------------------------	Server
+        		↑					↑					↑				.				↑					↑					↑
+        MessageBodyReader	ReaderInterceptor	ClientResponseFilter	.		MessageBodyWriter		WriterInterceptor	ContainerResponseFilter
+		12					11					10								9						8					7
+
+-Client makes a request and server serves the response. In-between there are different acting elements like Filters, Interceptors, MessageBodyReader & MessageBodyWriter etc. on client and server.
+1.When client makes request first thing gets called is ClientRequestFilter if exist, so we have opportunity to change request parameters from the request.
+2.When ClientRequestFilter is done WriterInterceptor takes over. Lets say we have an object, consider making POST request & we have java object that needs to be converted to an HTTP payload. Here, before conversion happen from an instance to HTTP payload intercepter gets a chance to modify that payload.
+3.MessageBodyWriter takes over. Now we have our java instance gets actually written to HTTP request using MessageBodyWriter at client side. With this request leaves the client and goes to the server.
+4.First thing gets called on server side is ContainerRequestFilter if exist which modifies the request params.
+5.Then we have ReaderInterceptor which intercept the read action and let us modify the payload.
+6.Then we have MessageBodyReader which actually converts from payload to java instance. Then that java instance get send to Resource method on our server. Consider resource method executes, does what it needs to do and now we have response to be sent back.
+7.ContainerResponseFilter kicks in and allows us to change response parameters.
+8.Then WriterInterceptor intercepts the write.
+9.Then MessageBodyWriter converts our java instance to response payload on server side. Then response gets send to the client.
+10.Before the client gets hold of response, ClientResponseFilter let us modify the response parameters.
+11.Then ReaderInterceptor on client side which intercepts the read.
+12.Finally MessageBodyReader converts from payload to our java instance on client side.
+-It is very unlikely that one application will have all these thing implemented. We would have certain thing implemented from this like MessageBodyReader, ContainerRequestFilter etc. but these is normal flow for request/response.
+
+
+
+**JAX RS and EJBs:
+-If we are working in J2EE environment & using JAX-RS, then to wire-in EJBs to JAX-RS resource we need to use CDI(Component Dependency Injection).
+-CDI gets lot of inspiration from Spring dependency injection or Guava dependency injection frameworks.
+-CDI let us inject bean instances using annotations rather than look-up instances of bean using some kind of method or directory.
+-J2EE CDI annotations are bit different than the way JAX-RS annotations works but we can actually have JAX-RS resources converted to Singleton and Stateless beans.
+-For example..
+//Stateless session bean as JAX-RS resource
+										@Stateless
+										@Path("stateless-bean")
+										public class StatelessResource{;;}
+//Singleton bean as JAX-RS resource
+										@Singleton
+										@Path("singleton-bean")
+										public class SingletonResource{;;}
+//RequestScoped JAX-RS resource
+										@RequestScoped
+										@Path("/employee/{id}")
+										public class Employee{
+											public Employee(){;;}
+										}
+-So, by using those annotations like @Stateless, @Singleton, @RequestScoped, we are basically wiring this in with CDI dependency injection of J2EE container.
+This bean can be dependency injected, we can have member variables of this class, for instance-Employee class which has @EJB annotation that let us wire-in different EJBs that we already have in our container.
+-Hence we can put JAX-RS & EJBs in same container by wired them using CDI.
+
+
+-----------------------------------------------------------------------------------------------------------------------------------
+
+
+
+					
